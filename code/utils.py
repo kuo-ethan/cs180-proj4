@@ -1,8 +1,10 @@
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 import matplotlib.pyplot as plt
-import skimage.io as skio
+from scipy.ndimage import distance_transform_edt
 import cv2
+from scipy.signal import convolve2d
+import skimage.io as skio
 
 
 # ===== Helpers ======
@@ -44,6 +46,45 @@ def display_img_with_keypoints(img, keypoints):
     x_coords, y_coords = zip(*keypoints)
     plt.scatter(x_coords, y_coords, color="red", marker="o", s=10)
     plt.show()
+
+
+def distance_transform(im):
+    mask = np.ones((im.shape[0], im.shape[1]), dtype=np.uint8)
+
+    mask[0, :] = 0
+    mask[-1, :] = 0
+    mask[:, 0] = 0
+    mask[:, -1] = 0
+
+    distance = distance_transform_edt(mask)
+    distance_rgb = np.stack([distance] * 3, axis=-1)
+
+    return distance_rgb
+
+
+def gaussian_blur(image, ksize=5, sigma=1):
+    gaussian_1d = cv2.getGaussianKernel(ksize, sigma)
+    gaussian_2d = np.outer(gaussian_1d, gaussian_1d.T)
+
+    if len(image.shape) == 2:  # Grayscale image
+        blurred_image = convolve2d(image, gaussian_2d, mode="same")
+
+    elif len(image.shape) == 3:  # RGB image
+        blurred_image = []
+        for i in range(3):
+            blurred_image.append(convolve2d(image[:, :, i], gaussian_2d, mode="same"))
+        blurred_image = np.dstack([channel for channel in blurred_image])
+
+    return blurred_image
+
+
+def pad_image(image, start_y, start_x, shape):
+    padded_image = np.zeros(shape, dtype=image.dtype)
+    end_y = start_y + image.shape[0]
+    end_x = start_x + image.shape[1]
+
+    padded_image[start_y:end_y, start_x:end_x, :] = image
+    return padded_image
 
 
 # ===== Algorithms =====
@@ -116,40 +157,65 @@ def rectify_image(im, im_pts, rect_pts):
 # Returns a mosaic of two images, where the second image is projected onto the first
 def build_mosaic(im1, im2, im1_pts, im2_pts):
     H = compute_homography(np.array(im2_pts), np.array(im1_pts))
-    warped_im2, dx, dy = warp_image(im2, H)
+    im2, dx, dy = warp_image(im2, H)
 
     im1_min_x, im1_max_x = 0, im1.shape[1] - 1
     im1_min_y, im1_max_y = 0, im1.shape[0] - 1
-    warped_im2_min_x, warped_im2_max_x = dx, dx + warped_im2.shape[1] - 1
-    warped_im2_min_y, warped_im2_max_y = dy, dy + warped_im2.shape[0] - 1
+    im2_min_x, im2_max_x = dx, dx + im2.shape[1] - 1
+    im2_min_y, im2_max_y = dy, dy + im2.shape[0] - 1
 
-    min_x = min(im1_min_x, warped_im2_min_x)
-    max_x = max(im1_max_x, warped_im2_max_x)
-    min_y = min(im1_min_y, warped_im2_min_y)
-    max_y = max(im1_max_y, warped_im2_max_y)
+    min_x = min(im1_min_x, im2_min_x)
+    max_x = max(im1_max_x, im2_max_x)
+    min_y = min(im1_min_y, im2_min_y)
+    max_y = max(im1_max_y, im2_max_y)
 
-    ret = np.zeros((max_y - min_y + 1, max_x - min_x + 1, 3))
+    ret = np.zeros((max_y - min_y + 1, max_x - min_x + 1, 3), dtype=np.float64)
     shift_x, shift_y = -min_x, -min_y
 
-    # Shift and place im1 into ret
-    ret[shift_y : shift_y + im1.shape[0], shift_x : shift_x + im1.shape[1]] = im1
+    # Create all needed padded data structures and overlap mask
+    im1_padded = pad_image(im1, shift_y, shift_x, ret.shape)
+    im2_padded = pad_image(im2, shift_y + dy, shift_x + dx, ret.shape)
 
-    # Shift and place warped_im2 into the correct position in ret
-    warped_y_start = warped_im2_min_y + shift_y
-    warped_y_end = warped_y_start + warped_im2.shape[0]
-    warped_x_start = warped_im2_min_x + shift_x
-    warped_x_end = warped_x_start + warped_im2.shape[1]
+    dt1_padded = pad_image(distance_transform(im1), shift_y, shift_x, ret.shape)
+    dt2_padded = pad_image(
+        distance_transform(im2), shift_y + dy, shift_x + dx, ret.shape
+    )
 
-    # Extract the region where warped_im2 will be placed
-    ret_region = ret[warped_y_start:warped_y_end, warped_x_start:warped_x_end]
+    epsilon = 1e-10  # A small value to prevent division by zero
+    dt1_padded /= np.max(dt1_padded) + epsilon
+    dt2_padded /= np.max(dt2_padded) + epsilon
 
-    # Find non-zero pixels in ret_region (overlapping pixels)
-    overlap_mask = ret_region != 0
+    im1_low_freq = gaussian_blur(im1)
+    im2_low_freq = gaussian_blur(im2)
 
-    # Average overlapping pixels
-    ret_region[overlap_mask] = (ret_region[overlap_mask] + warped_im2[overlap_mask]) / 2
+    im1_low_freq_padded = pad_image(im1_low_freq, shift_y, shift_x, ret.shape)
+    im2_low_freq_padded = pad_image(im2_low_freq, shift_y + dy, shift_x + dx, ret.shape)
+    im1_high_freq_padded = im1_padded - im1_low_freq_padded
+    im2_high_freq_padded = im2_padded - im2_low_freq_padded
 
-    # Assign non-overlapping pixels directly
-    ret_region[~overlap_mask] = warped_im2[~overlap_mask]
+    mask1 = np.sum(im1_padded, axis=-1) > 0
+    mask2 = np.sum(im2_padded, axis=-1) > 0
+    overlap_mask = np.logical_and(mask1, mask2)
 
-    return ret.astype(np.uint8)
+    # Fill in non-overlap regions
+    ret += im1_padded
+    ret += im2_padded
+    ret[overlap_mask] = 0
+
+    # For low frequencies of overlap, take weighted average based on distance transform
+    total_dt = dt1_padded + dt2_padded + epsilon
+    weight1 = dt1_padded / total_dt
+    weight2 = dt2_padded / total_dt
+    ret[overlap_mask] = (
+        im1_low_freq_padded[overlap_mask] * weight1[overlap_mask]
+        + im2_low_freq_padded[overlap_mask] * weight2[overlap_mask]
+    )
+
+    # For high frequencies of overlap, use the image with greater distance transform value
+    high_freq_mask = dt1_padded > dt2_padded
+    high_freq_result = np.zeros_like(ret)
+    high_freq_result[high_freq_mask] = im1_high_freq_padded[high_freq_mask]
+    high_freq_result[~high_freq_mask] = im2_high_freq_padded[~high_freq_mask]
+    ret[overlap_mask] += high_freq_result[overlap_mask]
+
+    return np.clip(ret, 0, 255).astype(np.uint8)
