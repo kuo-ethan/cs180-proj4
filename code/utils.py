@@ -1,10 +1,7 @@
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from ref import warp_image_kiran
 
-import cv2
-
-# ===== Helper functions ======
+# ===== Helpers ======
 
 # Appends a one to each coordinate
 def homogeneous_coords(coords):
@@ -43,9 +40,9 @@ def compute_homography(im1_pts, im2_pts):
     for i in range(n):
         y1, x1 = im1_pts[i]
         y2, x2 = im2_pts[i]
-        A.append([y1, x1, 1, 0, 0, 0, -y1 * y2, -x1 * y2])
-        A.append([0, 0, 0, y1, x1, 1, -y1 * x2, -x1 * x2])
-        y.extend([y2, x2])
+        A.append([x1, y1, 1, 0, 0, 0, -x1 * x2, -y1 * x2])
+        A.append([0, 0, 0, x1, y1, 1, -x1 * y2, -y1 * y2])
+        y.extend([x2, y2])
 
     A = np.array(A)
     b = np.array(y)
@@ -60,43 +57,32 @@ def compute_homography(im1_pts, im2_pts):
 # Returns the warped image after applying the given homography transformation
 def warp_image(im, H):
     h, w = im.shape[:2]
+    corners = np.array([[0, 0, 1], [w-1, 0, 1], [w-1, h-1, 1], [0, h-1, 1]])
+    corners = (H @ np.reshape(corners, (4, 3, 1))) # 4 column vectors
+    corners = np.array([corner / corner[2] for corner in corners]) # account for scaling factor w
 
-    # Warp each corner of the image
-    src_corners = [(0, 0, 1),  (h-1, 0, 1), (h-1, w-1, 1), (0, w-1, 1)]
-    target_corners = [H @ np.array(corner) for corner in src_corners]
+    corners = np.squeeze(corners)
+    x_values = corners[:, 0]
+    y_values = corners[:, 1]
+    min_x = int(np.min(x_values))
+    max_x = int(np.max(x_values))
+    min_y = int(np.min(y_values))
+    max_y = int(np.max(y_values))
 
-    # Scale target corners into (y, x) coordinates
-    scaled_target_corners = np.array([(corner / corner[2])[:2] for corner in target_corners])
+    x_range = np.arange(min_x, max_x)
+    y_range = np.arange(min_y, max_y)
 
-    # Compute the bounding box (potentially in negative space)
-    y_max = int(np.ceil(max([y for y, _ in scaled_target_corners])))
-    y_min = int(np.floor(min([y for y, _ in scaled_target_corners])))
-    x_max = int(np.ceil(max([x for _, x in scaled_target_corners])))
-    x_min = int(np.floor(min([x for _, x in scaled_target_corners])))
+    x, y = np.meshgrid(x_range, y_range)
+    im_coords = np.vstack([x.ravel(), y.ravel(), np.ones(x.size)])
 
-    # Get all points in target image (may include negative coordinates)
-    target_coords = np.array([(y, x) for y in np.arange(y_min, y_max + 1) for x in np.arange(x_min, x_max + 1)])
+    xs, ys, ws = np.linalg.inv(H) @ im_coords
+    xs = xs / ws
+    ys = ys / ws
 
-    # Find the preimage for each of these coordinates
-    H_inv = np.linalg.inv(H)    
-    target_coords_mat = homogeneous_coords(target_coords).T
-    ys, xs, ws = H_inv @ target_coords_mat
-    ys /= ws
-    xs /= ws
+    colors = bilinear_interpolation(im, np.column_stack((xs, ys)))
+    colors = np.reshape(colors, (max_y - min_y, max_x - min_x, 3))
 
-    # Find out which preimages are actually in the original image
-    bounded_indices = np.where((0 <= xs) & (xs < w) & (0 <= ys) & (ys < h))
-    valid_ys = ys[bounded_indices].astype(int)
-    valid_xs = xs[bounded_indices].astype(int)
-
-    # Construct warped image using nearest neighbor interpolation
-    y_shift = -y_min
-    x_shift = -x_min
-    warped_im = np.zeros((y_max + y_shift + 1, x_max + x_shift + 1, 3)).astype(np.uint8)
-    valid_target_coords = target_coords[bounded_indices]
-    shifted_valid_target_coords = valid_target_coords + np.array((y_shift, x_shift))
-    warped_im[shifted_valid_target_coords[:, 0], shifted_valid_target_coords[:, 1]] = im[valid_ys, valid_xs]
-    return warped_im
+    return colors.astype(np.uint8)
 
 
 # Return a warped version of the image with a "straightened out" rectangle
