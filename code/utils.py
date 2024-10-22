@@ -48,13 +48,21 @@ def display_img_with_keypoints(img, keypoints):
     plt.show()
 
 
-def distance_transform(im):
-    mask = np.ones((im.shape[0], im.shape[1]), dtype=np.uint8)
+def distance_transform(im, x_values=None, y_values=None):
+    if x_values is None:
+        mask = np.ones((im.shape[0], im.shape[1]), dtype=np.uint8)
 
-    mask[0, :] = 0
-    mask[-1, :] = 0
-    mask[:, 0] = 0
-    mask[:, -1] = 0
+        mask[0, :] = 0
+        mask[-1, :] = 0
+        mask[:, 0] = 0
+        mask[:, -1] = 0
+
+    else:
+        mask = np.zeros((im.shape[0], im.shape[1]), dtype=np.uint8)
+        corners = np.stack((x_values, y_values), axis=-1).astype(np.int32)
+        corners = corners.reshape((-1, 1, 2))
+
+        cv2.fillPoly(mask, [corners], 1)
 
     distance = distance_transform_edt(mask)
     distance_rgb = np.stack([distance] * 3, axis=-1)
@@ -114,7 +122,7 @@ def compute_homography(im1_pts, im2_pts):
     return H
 
 
-# Returns the warped image after applying a homography and a shift vector to bring it to its "true" coordinates
+# Returns the warped image and its corners after applying a homography and a shift vector to bring it to its "true" coordinates
 def warp_image(im, H):
     h, w = im.shape[:2]
     corners = np.array([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]])
@@ -144,20 +152,20 @@ def warp_image(im, H):
     colors = bilinear_interpolation(im, np.column_stack((ys, xs)))
     colors = np.reshape(colors, (max_y - min_y, max_x - min_x, 3))
 
-    return colors.astype(np.uint8), min_x, min_y
+    return colors.astype(np.uint8), x_values - min_x, y_values - min_y, min_x, min_y
 
 
 # Return a warped version of the image with a "straightened out" rectangle
 def rectify_image(im, im_pts, rect_pts):
     H = compute_homography(np.array(im_pts), np.array(rect_pts))
-    ret, _, _ = warp_image(im, H)
+    ret = warp_image(im, H)[0]
     return ret
 
 
 # Returns a mosaic of two images, where the second image is projected onto the first
 def build_mosaic(im1, im2, im1_pts, im2_pts):
     H = compute_homography(np.array(im2_pts), np.array(im1_pts))
-    im2, dx, dy = warp_image(im2, H)
+    im2, x_values, y_values, dx, dy = warp_image(im2, H)
 
     im1_min_x, im1_max_x = 0, im1.shape[1] - 1
     im1_min_y, im1_max_y = 0, im1.shape[0] - 1
@@ -178,12 +186,21 @@ def build_mosaic(im1, im2, im1_pts, im2_pts):
 
     dt1_padded = pad_image(distance_transform(im1), shift_y, shift_x, ret.shape)
     dt2_padded = pad_image(
-        distance_transform(im2), shift_y + dy, shift_x + dx, ret.shape
+        distance_transform(im2, x_values, y_values),
+        shift_y + dy,
+        shift_x + dx,
+        ret.shape,
     )
 
     epsilon = 1e-10  # A small value to prevent division by zero
     dt1_padded /= np.max(dt1_padded) + epsilon
     dt2_padded /= np.max(dt2_padded) + epsilon
+
+    skio.imshow(im2_padded)
+    skio.show()
+
+    skio.imshow(dt2_padded)
+    skio.show()
 
     im1_low_freq = gaussian_blur(im1)
     im2_low_freq = gaussian_blur(im2)

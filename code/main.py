@@ -127,5 +127,5 @@ def mosaic_blending():
 
 
 # Main
-# image_rectification()
+image_rectification()
 mosaic_blending()
