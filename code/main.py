@@ -1,5 +1,5 @@
 import skimage.io as skio
-from utils import rectify_image, build_mosaic, display_img_with_keypoints
+from utils import rectify_image, build_mosaic
 
 
 # Drivers

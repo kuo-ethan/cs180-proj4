@@ -48,9 +48,10 @@ def display_img_with_keypoints(img, keypoints):
     plt.show()
 
 
-def distance_transform(im, x_values=None, y_values=None):
+# Given the shape of an RGB image and corner coordinates, return 3 channel distance transform
+def distance_transform(im_shape, x_values=None, y_values=None):
     if x_values is None:
-        mask = np.ones((im.shape[0], im.shape[1]), dtype=np.uint8)
+        mask = np.ones((im_shape[0], im_shape[1]), dtype=np.uint8)
 
         mask[0, :] = 0
         mask[-1, :] = 0
@@ -58,13 +59,14 @@ def distance_transform(im, x_values=None, y_values=None):
         mask[:, -1] = 0
 
     else:
-        mask = np.zeros((im.shape[0], im.shape[1]), dtype=np.uint8)
+        mask = np.zeros((im_shape[0], im_shape[1]), dtype=np.uint8)
         corners = np.stack((x_values, y_values), axis=-1).astype(np.int32)
         corners = corners.reshape((-1, 1, 2))
 
         cv2.fillPoly(mask, [corners], 1)
 
     distance = distance_transform_edt(mask)
+    distance /= np.max(distance)
     distance_rgb = np.stack([distance] * 3, axis=-1)
 
     return distance_rgb
@@ -184,23 +186,13 @@ def build_mosaic(im1, im2, im1_pts, im2_pts):
     im1_padded = pad_image(im1, shift_y, shift_x, ret.shape)
     im2_padded = pad_image(im2, shift_y + dy, shift_x + dx, ret.shape)
 
-    dt1_padded = pad_image(distance_transform(im1), shift_y, shift_x, ret.shape)
+    dt1_padded = pad_image(distance_transform(im1.shape), shift_y, shift_x, ret.shape)
     dt2_padded = pad_image(
-        distance_transform(im2, x_values, y_values),
+        distance_transform(im2.shape, x_values, y_values),
         shift_y + dy,
         shift_x + dx,
         ret.shape,
     )
-
-    epsilon = 1e-10  # A small value to prevent division by zero
-    dt1_padded /= np.max(dt1_padded) + epsilon
-    dt2_padded /= np.max(dt2_padded) + epsilon
-
-    skio.imshow(im2_padded)
-    skio.show()
-
-    skio.imshow(dt2_padded)
-    skio.show()
 
     im1_low_freq = gaussian_blur(im1)
     im2_low_freq = gaussian_blur(im2)
@@ -220,6 +212,7 @@ def build_mosaic(im1, im2, im1_pts, im2_pts):
     ret[overlap_mask] = 0
 
     # For low frequencies of overlap, take weighted average based on distance transform
+    epsilon = 1e-10  # A small value to prevent division by zero
     total_dt = dt1_padded + dt2_padded + epsilon
     weight1 = dt1_padded / total_dt
     weight2 = dt2_padded / total_dt
