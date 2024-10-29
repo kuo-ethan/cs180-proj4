@@ -5,6 +5,8 @@ from scipy.ndimage import distance_transform_edt
 import cv2
 from scipy.signal import convolve2d
 import skimage.io as skio
+import numpy as np
+from skimage.feature import corner_harris, peak_local_max
 
 
 # ===== Helpers ======
@@ -95,6 +97,32 @@ def pad_image(image, start_y, start_x, shape):
 
     padded_image[start_y:end_y, start_x:end_x, :] = image
     return padded_image
+
+
+def dist2(x, c):
+    """
+    dist2  Calculates squared distance between two sets of points.
+
+    Description
+    D = DIST2(X, C) takes two matrices of vectors and calculates the
+    squared Euclidean distance between them.  Both matrices must be of
+    the same column dimension.  If X has M rows and N columns, and C has
+    L rows and N columns, then the result has M rows and L columns.  The
+    I, Jth entry is the  squared distance from the Ith row of X to the
+    Jth row of C.
+
+    Adapted from code by Christopher M Bishop and Ian T Nabney.
+    """
+
+    ndata, dimx = x.shape
+    ncenters, dimc = c.shape
+    assert dimx == dimc, "Data dimension does not match dimension of centers"
+
+    return (
+        (np.ones((ncenters, 1)) * np.sum((x**2).T, axis=0)).T
+        + np.ones((ndata, 1)) * np.sum((c**2).T, axis=0)
+        - 2 * np.inner(x, c)
+    )
 
 
 # ===== Algorithms =====
@@ -229,3 +257,106 @@ def build_mosaic(im1, im2, im1_pts, im2_pts):
     ret[overlap_mask] += high_freq_result[overlap_mask]
 
     return np.clip(ret, 0, 255).astype(np.uint8)
+
+
+def get_harris_corners(im, edge_discard=20):
+    """
+    This function takes am RGB image and an optional amount to discard
+    on the edge (default is 5 pixels), and finds all harris corners
+    in the image. Harris corners near the edge are discarded and the
+    coordinates of the remaining corners are returned. A 2d array (h)
+    containing the h value of every pixel is also returned.
+
+    h is the same shape as the original image, im.
+    coords is 2 x n (ys, xs).
+    """
+
+    assert edge_discard >= 20
+
+    # convert to grayscale image
+    im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+
+    # find harris corners
+    h = corner_harris(im, method="eps", sigma=1)
+    coords = peak_local_max(h, min_distance=1)
+
+    # discard points on edge
+    edge = edge_discard  # pixels
+    mask = (
+        (coords[:, 0] > edge)
+        & (coords[:, 0] < im.shape[0] - edge)
+        & (coords[:, 1] > edge)
+        & (coords[:, 1] < im.shape[1] - edge)
+    )
+    coords = coords[mask].T
+
+    # display_img_with_keypoints(im, list(zip(coords[1], coords[0])))  # TEST
+
+    return h, coords
+
+
+# Filters a list of candidate corners into K good, spatially distributed corners
+def anms(h, corners, k=100, c_robust=0.9):
+    _, n = corners.shape
+    ys, xs = corners
+
+    r = np.full(n, np.inf)
+
+    all_coords = np.stack((xs, ys), axis=-1)
+
+    for i in range(n):
+        condition = h[ys[i], xs[i]] < h[ys, xs] * c_robust
+        better_corners = all_coords[condition]
+
+        if better_corners.size > 0:
+            X = all_coords[i].reshape(1, -1)
+            distances = dist2(X, better_corners)
+            r[i] = distances.min()
+
+    top_k_indices = np.argpartition(-r, k)[:k]
+    return corners[:, top_k_indices]
+
+
+# Returns the feature patch for a keypoint
+def extract_feature(keypoint, im):
+    pass
+
+
+# Returns tuples of indices that represent matchings between feature patches
+def match_features(features1, features2, c_robust=0.65):
+    pass
+
+
+# Runs RANSAC algorithm to filter out some matchings
+def ransac(matchings, iterations=1000, c_robust=3):
+    pass
+
+
+# Automatically derive and return correspondances between 2 images (feature matching)
+def automatic_feature_matching(im1, im2):
+    # [1] Harris corner detection
+    h1, corners1 = get_harris_corners(im1)
+    h2, corners2 = get_harris_corners(im2)
+
+    # [2] Adaptive Non-Maximal Supression (ANMS)
+    corners1 = anms(h1, corners1)
+    corners2 = anms(h2, corners2)
+
+    display_img_with_keypoints(im1, list(zip(corners1[1], corners1[0])))  # TEST
+    display_img_with_keypoints(im2, list(zip(corners2[1], corners2[0])))  # TEST
+
+    # # [3] Feature descriptor extraction
+    # features1 = [extract_feature(corner, im1) for corner in corners1]
+    # features2 = [extract_feature(corner, im2) for corner in corners2]
+
+    # # [4] Feature matching (with Lowe's technique)
+    # matchings = [
+    #     (corners1[i], corners2[j]) for i, j in match_features(features1, features2)
+    # ]
+
+    # # [5] Random Sample Consensus (RANSAC)
+    # matchings = ransac(matchings)
+
+    # pts1 = [match[0] for match in matchings]
+    # pts2 = [match[1] for match in matchings]
+    # return pts1, pts2

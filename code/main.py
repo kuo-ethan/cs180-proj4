@@ -1,5 +1,5 @@
 import skimage.io as skio
-from utils import rectify_image, build_mosaic
+from utils import rectify_image, build_mosaic, automatic_feature_matching
 
 
 # Drivers
@@ -17,10 +17,10 @@ def image_rectification():
     skio.imsave(f"../images/rectified_ipad.jpg", rectified_im)
 
 
-def mosaic_blending():
+def mosaic_blending(auto=False):
     im1 = skio.imread(f"../data/balcony1.JPG")
     im2 = skio.imread(f"../data/balcony2.JPG")
-    BALCONY_KEYPOINTS1 = [
+    balcony_keypoints1 = [
         (443, 465),
         (477, 467),
         (478, 560),
@@ -35,7 +35,7 @@ def mosaic_blending():
         (967, 241),
     ]
 
-    BALCONY_KEYPOINTS2 = [
+    balcony_keypoints2 = [
         (204, 479),
         (254, 478),
         (253, 587),
@@ -49,16 +49,19 @@ def mosaic_blending():
         (522, 292),
         (660, 284),
     ]
+    if auto:
+        balcony_keypoints1, balcony_keypoints2 = automatic_feature_matching(im1, im2)
 
-    # display_img_with_keypoints(im1, BALCONY_KEYPOINTS1)
-    # display_img_with_keypoints(im2, BALCONY_KEYPOINTS2)
-    mosaic = build_mosaic(im1, im2, BALCONY_KEYPOINTS1, BALCONY_KEYPOINTS2)
-    skio.imsave(f"../images/balcony_mosaic.jpg", mosaic)
+    # display_img_with_keypoints(im1, balcony_keypoints1)
+    # display_img_with_keypoints(im2, balcony_keypoints2)
+    mosaic = build_mosaic(im1, im2, balcony_keypoints1, balcony_keypoints2)
+    filename = f"../images/balcony_mosaic{'_auto' if auto else ''}.jpg"
+    skio.imsave(filename, mosaic)
 
     im1 = skio.imread(f"../data/livingroom1.JPG")
     im2 = skio.imread(f"../data/livingroom2.JPG")
 
-    LIVINGROOM_KEYPOINTS1 = [
+    livingroom_keypoints1 = [
         (298, 355),
         (268, 210),
         (255, 142),
@@ -74,7 +77,7 @@ def mosaic_blending():
         (665, 158),
         (35, 44),
     ]
-    LIVINGROOM_KEYPOINTS2 = [
+    livingroom_keypoints2 = [
         (276, 719),
         (272, 558),
         (271, 492),
@@ -90,16 +93,21 @@ def mosaic_blending():
         (661, 510),
         (87, 407),
     ]
+    if auto:
+        livingroom_keypoints1, livingroom_keypoints2 = automatic_feature_matching(
+            im1, im2
+        )
 
-    # display_img_with_keypoints(im1, LIVINGROOM_KEYPOINTS1)
-    # display_img_with_keypoints(im2, LIVINGROOM_KEYPOINTS2)
-    mosaic = build_mosaic(im1, im2, LIVINGROOM_KEYPOINTS1, LIVINGROOM_KEYPOINTS2)
-    skio.imsave(f"../images/livingroom_mosaic.jpg", mosaic)
+    # display_img_with_keypoints(im1, livingroom_keypoints1)
+    # display_img_with_keypoints(im2, livingroom_keypoints2)
+    mosaic = build_mosaic(im1, im2, livingroom_keypoints1, livingroom_keypoints2)
+    filename = f"../images/livingroom_mosaic{'_auto' if auto else ''}.jpg"
+    skio.imsave(filename, mosaic)
 
     im1 = skio.imread(f"../data/shoes1.JPG")
     im2 = skio.imread(f"../data/shoes2.JPG")
 
-    SHOES_KEYPOINTS1 = [
+    shoes_keypoints1 = [
         (184, 428),
         (557, 429),
         (201, 612),
@@ -109,7 +117,7 @@ def mosaic_blending():
         (225, 894),
         (516, 896),
     ]
-    SHOES_KEYPOINTS2 = [
+    shoes_keypoints2 = [
         (179, 242),
         (570, 239),
         (210, 434),
@@ -120,12 +128,19 @@ def mosaic_blending():
         (508, 681),
     ]
 
-    # display_img_with_keypoints(im1, SHOES_KEYPOINTS1)
-    # display_img_with_keypoints(im2, SHOES_KEYPOINTS2)
-    mosaic = build_mosaic(im1, im2, SHOES_KEYPOINTS1, SHOES_KEYPOINTS2)
-    skio.imsave(f"../images/shoes_mosaic.jpg", mosaic)
+    if auto:
+        shoes_keypoints1, shoes_keypoints2 = automatic_feature_matching(im1, im2)
+
+    # display_img_with_keypoints(im1, shoes_keypoints1)
+    # display_img_with_keypoints(im2, shoes_keypoints2)
+    mosaic = build_mosaic(im1, im2, shoes_keypoints1, shoes_keypoints2)
+    filename = f"../images/shoes_mosaic{'_auto' if auto else ''}.jpg"
+    skio.imsave(filename, mosaic)
 
 
-# Main
-image_rectification()
-mosaic_blending()
+# Project 4A
+# image_rectification()
+# mosaic_blending()
+
+# Project 4B
+mosaic_blending(auto=True)
