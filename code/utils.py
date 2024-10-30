@@ -1,3 +1,4 @@
+import random
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ import cv2
 from scipy.signal import convolve2d
 import skimage.io as skio
 import numpy as np
+from scipy.spatial import KDTree
 from skimage.feature import corner_harris, peak_local_max
 
 
@@ -47,6 +49,27 @@ def display_img_with_keypoints(img, keypoints):
     plt.imshow(img)
     x_coords, y_coords = zip(*keypoints)
     plt.scatter(x_coords, y_coords, color="red", marker="o", s=10)
+    plt.show()
+
+
+def plot_matches(im1, im2, im1_pts, im2_pts):
+    # Concatenate the two images side-by-side
+    combined_image = np.concatenate((im1, im2), axis=1)
+    plt.imshow(combined_image)
+
+    # Plot keypoints and draw lines between matches
+    for (x1, y1), (x2, y2) in zip(im1_pts, im2_pts):
+        # Draw keypoints
+        plt.plot(x1, y1, "ro")  # Keypoint in Image 1
+        plt.plot(
+            x2 + im1.shape[1], y2, "ro"
+        )  # Keypoint in Image 2 (offset x by width of im1)
+
+        # Draw line connecting the matching keypoints
+        plt.plot([x1, x2 + im1.shape[1]], [y1, y2], "y-", linewidth=1)
+
+    # Hide axis for better visualization
+    plt.axis("off")
     plt.show()
 
 
@@ -296,7 +319,7 @@ def get_harris_corners(im, edge_discard=20):
 
 
 # Filters a list of candidate corners into K good, spatially distributed corners
-def anms(h, corners, k=100, c_robust=0.9):
+def anms(h, corners, k=100, c_robust=0.95):
     _, n = corners.shape
     ys, xs = corners
 
@@ -318,18 +341,100 @@ def anms(h, corners, k=100, c_robust=0.9):
 
 
 # Returns the feature patch for a keypoint
-def extract_feature(keypoint, im):
-    pass
+def extract_feature(x, y, im):
+    patch = im[y - 20 : y + 20, x - 20 : x + 20]
+    # skio.imshow(patch.astype(np.uint8))  # TEST
+    # skio.show()
+    downsampled_patch = patch[::5, ::5]
+    # skio.imshow(downsampled_patch.astype(np.uint8))  # TEST
+    # skio.show()
+    mean = np.mean(downsampled_patch)
+    std_dev = np.std(downsampled_patch)
+    normalized_patch = (downsampled_patch - mean) / std_dev
+    # display_patch = (normalized_patch - normalized_patch.min()) / (  # TEST
+    #     normalized_patch.max() - normalized_patch.min()
+    # )
+    # skio.imshow(display_patch)
+    # skio.show()
+    return normalized_patch
 
 
 # Returns tuples of indices that represent matchings between feature patches
 def match_features(features1, features2, c_robust=0.65):
-    pass
+    flattened_features1 = [feature.flatten() for feature in features1]
+    flattened_features2 = [feature.flatten() for feature in features2]
+
+    # Build KD trees
+    kd_tree1 = KDTree(flattened_features1)
+    kd_tree2 = KDTree(flattened_features2)
+
+    matchings = [None] * len(
+        features2
+    )  # matchings[j] = i means features2[j] matched with features1[i]
+
+    # Pass 1: match each feature point in image 1 with a feature point in image 2
+    for i in range(len(features1)):
+        point = flattened_features1[i]
+        distance, indices = kd_tree2.query(point, k=2)
+
+        # Apply Lowe's technique to make sure the nearest neighbor is actually good
+        if distance[0] < distance[1] * c_robust:
+            j = indices[0]
+            matchings[j] = i
+
+    # Pass 2: match each feature point in image 2 with a feature point in image 1
+    for j in range(len(features2)):
+        point = flattened_features2[j]
+        distance, indices = kd_tree1.query(point, k=2)
+
+        if distance[0] < distance[1] * c_robust:
+            i = indices[0]
+            if matchings[j] != i:
+                # 2-way match failed, so invalidate the matching
+                matchings[j] = None
+
+    # Post-process the matchings data structure to get the result
+    res = []
+    for j, i in enumerate(matchings):
+        if i is None:
+            continue
+        res.append((i, j))
+    return res
 
 
 # Runs RANSAC algorithm to filter out some matchings
-def ransac(matchings, iterations=1000, c_robust=3):
-    pass
+def ransac(im1_pts, im2_pts, iterations=10000, c_robust=1):
+
+    assert len(im1_pts) == len(im2_pts)
+
+    n = len(im1_pts)
+    inliers = []
+
+    for _ in range(iterations):
+        cur_inliers = []
+
+        # Randomly sample 4 matchings and compute its exact homography
+        indices = random.sample(range(n), 4)
+        H = compute_homography(im1_pts[indices], im2_pts[indices])
+
+        # Apply this homography to all points im image 1
+        transformed_im1_pts = H @ np.reshape(homogeneous_coords(im1_pts), (n, 3, 1))
+        transformed_im1_pts = np.array(
+            [coord[:2] / coord[2] for coord in transformed_im1_pts]
+        )
+        transformed_im1_pts = np.squeeze(transformed_im1_pts)
+
+        # Find inliers, or points that mapped to the expected destination
+        for i in range(n):
+            dist = np.linalg.norm(transformed_im1_pts[i] - im2_pts[i])
+            if dist < c_robust:
+                cur_inliers.append(i)
+
+        # Keep track of the largest set of inliers seen
+        if len(cur_inliers) > len(inliers):
+            inliers = cur_inliers
+
+    return im1_pts[inliers], im2_pts[inliers]
 
 
 # Automatically derive and return correspondances between 2 images (feature matching)
@@ -345,18 +450,23 @@ def automatic_feature_matching(im1, im2):
     display_img_with_keypoints(im1, list(zip(corners1[1], corners1[0])))  # TEST
     display_img_with_keypoints(im2, list(zip(corners2[1], corners2[0])))  # TEST
 
-    # # [3] Feature descriptor extraction
-    # features1 = [extract_feature(corner, im1) for corner in corners1]
-    # features2 = [extract_feature(corner, im2) for corner in corners2]
+    # [3] Feature descriptor extraction
+    corners1 = corners1[[1, 0], :].T
+    corners2 = corners2[[1, 0], :].T
+    im1_blurred = gaussian_blur(im1)
+    im2_blurred = gaussian_blur(im2)
+    features1 = [extract_feature(x, y, im1_blurred) for x, y in corners1]
+    features2 = [extract_feature(x, y, im2_blurred) for x, y in corners2]
 
-    # # [4] Feature matching (with Lowe's technique)
-    # matchings = [
-    #     (corners1[i], corners2[j]) for i, j in match_features(features1, features2)
-    # ]
+    # [4] Feature matching (with Lowe's technique)
+    corners1 = np.array([corners1[i] for i, _ in match_features(features1, features2)])
+    corners2 = np.array([corners2[j] for _, j in match_features(features1, features2)])
 
-    # # [5] Random Sample Consensus (RANSAC)
-    # matchings = ransac(matchings)
+    plot_matches(im1, im2, corners1, corners2)  # TEST
 
-    # pts1 = [match[0] for match in matchings]
-    # pts2 = [match[1] for match in matchings]
-    # return pts1, pts2
+    # [5] Random Sample Consensus (RANSAC)
+    corners1, corners2 = ransac(corners1, corners2)
+
+    plot_matches(im1, im2, corners1, corners2)  # TEST
+
+    return corners1, corners2
