@@ -18,45 +18,45 @@ def image_rectification():
 
 
 def mosaic_blending(auto=False):
-    # im1 = skio.imread(f"../data/balcony1.JPG")
-    # im2 = skio.imread(f"../data/balcony2.JPG")
-    # balcony_keypoints1 = [
-    #     (443, 465),
-    #     (477, 467),
-    #     (478, 560),
-    #     (460, 437),
-    #     (355, 376),
-    #     (472, 378),
-    #     (497, 416),
-    #     (700, 425),
-    #     (877, 572),
-    #     (798, 250),
-    #     (739, 278),
-    #     (967, 241),
-    # ]
+    im1 = skio.imread(f"../data/balcony1.JPG")
+    im2 = skio.imread(f"../data/balcony2.JPG")
+    balcony_keypoints1 = [
+        (443, 465),
+        (477, 467),
+        (478, 560),
+        (460, 437),
+        (355, 376),
+        (472, 378),
+        (497, 416),
+        (700, 425),
+        (877, 572),
+        (798, 250),
+        (739, 278),
+        (967, 241),
+    ]
 
-    # balcony_keypoints2 = [
-    #     (204, 479),
-    #     (254, 478),
-    #     (253, 587),
-    #     (233, 442),
-    #     (56, 367),
-    #     (250, 373),
-    #     (282, 417),
-    #     (490, 420),
-    #     (608, 527),
-    #     (563, 275),
-    #     (522, 292),
-    #     (660, 284),
-    # ]
-    # if auto:
-    #     balcony_keypoints1, balcony_keypoints2 = automatic_feature_matching(
-    #         im1, im2, c_lowes=0.75
-    #     )
+    balcony_keypoints2 = [
+        (204, 479),
+        (254, 478),
+        (253, 587),
+        (233, 442),
+        (56, 367),
+        (250, 373),
+        (282, 417),
+        (490, 420),
+        (608, 527),
+        (563, 275),
+        (522, 292),
+        (660, 284),
+    ]
+    if auto:
+        balcony_keypoints1, balcony_keypoints2 = automatic_feature_matching(
+            im1, im2, c_lowes=0.75
+        )
 
-    # mosaic = build_mosaic(im1, im2, balcony_keypoints1, balcony_keypoints2)
-    # filename = f"../images/balcony_mosaic{'_auto' if auto else ''}.jpg"
-    # skio.imsave(filename, mosaic)
+    mosaic = build_mosaic(im1, im2, balcony_keypoints1, balcony_keypoints2)
+    filename = f"../images/balcony_mosaic{'_auto' if auto else ''}.jpg"
+    skio.imsave(filename, mosaic)
 
     # im1 = skio.imread(f"../data/livingroom1.JPG")
     # im2 = skio.imread(f"../data/livingroom2.JPG")
@@ -137,35 +137,35 @@ def mosaic_blending(auto=False):
     # filename = f"../images/shoes_mosaic{'_auto' if auto else ''}.jpg"
     # skio.imsave(filename, mosaic)
 
-    if auto:
-        im1 = skio.imread(f"../data/painting1.JPG")
-        im2 = skio.imread(f"../data/painting2.JPG")
+    # if auto:
+    #     im1 = skio.imread(f"../data/painting1.JPG")
+    #     im2 = skio.imread(f"../data/painting2.JPG")
 
-        painting_keypoints1, painting_keypoints2 = automatic_feature_matching(
-            im1, im2, c_lowes=0.75
-        )
+    #     painting_keypoints1, painting_keypoints2 = automatic_feature_matching(
+    #         im1, im2, c_lowes=0.75
+    #     )
 
-        # display_img_with_keypoints(im1, door_keypoints1)
-        # display_img_with_keypoints(im2, door_keypoints2)
-        mosaic = build_mosaic(im1, im2, painting_keypoints1, painting_keypoints2)
-        filename = f"../images/painting_mosaic_auto.jpg"
-        skio.imsave(filename, mosaic)
+    #     # display_img_with_keypoints(im1, door_keypoints1)
+    #     # display_img_with_keypoints(im2, door_keypoints2)
+    #     mosaic = build_mosaic(im1, im2, painting_keypoints1, painting_keypoints2)
+    #     filename = f"../images/painting_mosaic_auto.jpg"
+    #     skio.imsave(filename, mosaic)
 
-        im1 = skio.imread(f"../data/kitchen1.JPG")
-        im2 = skio.imread(f"../data/kitchen2.JPG")
+    #     im1 = skio.imread(f"../data/kitchen1.JPG")
+    #     im2 = skio.imread(f"../data/kitchen2.JPG")
 
-        kitchen_keypoints1, kitchen_keypoints2 = automatic_feature_matching(im1, im2)
+    #     kitchen_keypoints1, kitchen_keypoints2 = automatic_feature_matching(im1, im2)
 
-        # display_img_with_keypoints(im1, door_keypoints1)
-        # display_img_with_keypoints(im2, door_keypoints2)
-        mosaic = build_mosaic(im1, im2, kitchen_keypoints1, kitchen_keypoints2)
-        filename = f"../images/kitchen_mosaic_auto.jpg"
-        skio.imsave(filename, mosaic)
+    #     # display_img_with_keypoints(im1, door_keypoints1)
+    #     # display_img_with_keypoints(im2, door_keypoints2)
+    #     mosaic = build_mosaic(im1, im2, kitchen_keypoints1, kitchen_keypoints2)
+    #     filename = f"../images/kitchen_mosaic_auto.jpg"
+    #     skio.imsave(filename, mosaic)
 
 
 # Project 4A
-image_rectification()
-mosaic_blending()
+# image_rectification()
+# mosaic_blending()
 
 # Project 4B
 mosaic_blending(auto=True)

@@ -490,6 +490,6 @@ def automatic_feature_matching(im1, im2, c_anms=0.95, c_lowes=0.65, c_ransac=1):
     # [5] Random Sample Consensus (RANSAC)
     corners1, corners2 = ransac(corners1, corners2, c_ransac)
 
-    # plot_matches(im1, im2, corners1, corners2)  # TEST
+    plot_matches(im1, im2, corners1, corners2)  # TEST
 
     return corners1, corners2
