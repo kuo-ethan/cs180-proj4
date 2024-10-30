@@ -53,22 +53,15 @@ def display_img_with_keypoints(img, keypoints):
 
 
 def plot_matches(im1, im2, im1_pts, im2_pts):
-    # Concatenate the two images side-by-side
     combined_image = np.concatenate((im1, im2), axis=1)
     plt.imshow(combined_image)
 
     # Plot keypoints and draw lines between matches
     for (x1, y1), (x2, y2) in zip(im1_pts, im2_pts):
-        # Draw keypoints
-        plt.plot(x1, y1, "ro")  # Keypoint in Image 1
-        plt.plot(
-            x2 + im1.shape[1], y2, "ro"
-        )  # Keypoint in Image 2 (offset x by width of im1)
-
-        # Draw line connecting the matching keypoints
+        plt.plot(x1, y1, "ro")
+        plt.plot(x2 + im1.shape[1], y2, "ro")
         plt.plot([x1, x2 + im1.shape[1]], [y1, y2], "y-", linewidth=1)
 
-    # Hide axis for better visualization
     plt.axis("off")
     plt.show()
 
@@ -359,14 +352,9 @@ def extract_feature(x, y, im):
     return normalized_patch
 
 
-# Returns tuples of indices that represent matchings between feature patches
 def match_features(features1, features2, c_robust):
     flattened_features1 = [feature.flatten() for feature in features1]
     flattened_features2 = [feature.flatten() for feature in features2]
-
-    # Build KD trees
-    kd_tree1 = KDTree(flattened_features1)
-    kd_tree2 = KDTree(flattened_features2)
 
     matchings = [None] * len(
         features2
@@ -374,22 +362,52 @@ def match_features(features1, features2, c_robust):
 
     # Pass 1: match each feature point in image 1 with a feature point in image 2
     for i in range(len(features1)):
-        point = flattened_features1[i]
-        distance, indices = kd_tree2.query(point, k=2)
+
+        # Find 1-NN
+        nn1_distance = np.inf
+        nn1 = None
+        for j in range(len(features2)):
+            distance = np.linalg.norm(flattened_features1[i] - flattened_features2[j])
+            if distance < nn1_distance:
+                nn1_distance = distance
+                nn1 = j
+
+        # Find 2-NN
+        nn2_distance = np.inf
+        for j in range(len(features2)):
+            if j == nn1:
+                continue
+            distance = np.linalg.norm(flattened_features1[i] - flattened_features2[j])
+            if distance < nn2_distance:
+                nn2_distance = distance
 
         # Apply Lowe's technique to make sure the nearest neighbor is actually good
-        if distance[0] < distance[1] * c_robust:
-            j = indices[0]
-            matchings[j] = i
+        if nn1_distance < nn2_distance * c_robust:
+            matchings[nn1] = i
 
     # Pass 2: match each feature point in image 2 with a feature point in image 1
     for j in range(len(features2)):
-        point = flattened_features2[j]
-        distance, indices = kd_tree1.query(point, k=2)
 
-        if distance[0] < distance[1] * c_robust:
-            i = indices[0]
-            if matchings[j] != i:
+        # Find 1-NN
+        nn1_distance = np.inf
+        nn1 = None
+        for i in range(len(features1)):
+            distance = np.linalg.norm(flattened_features1[i] - flattened_features2[j])
+            if distance < nn1_distance:
+                nn1_distance = distance
+                nn1 = i
+
+        # Find 2-NN
+        nn2_distance = np.inf
+        for i in range(len(features1)):
+            if i == nn1:
+                continue
+            distance = np.linalg.norm(flattened_features1[i] - flattened_features2[j])
+            if distance < nn2_distance:
+                nn2_distance = distance
+
+        if nn1_distance < nn2_distance * c_robust:
+            if matchings[j] != nn1:
                 # 2-way match failed, so invalidate the matching
                 matchings[j] = None
 
@@ -439,6 +457,7 @@ def ransac(im1_pts, im2_pts, c_robust, iterations=10000):
 
 # Automatically derive and return correspondances between 2 images (feature matching)
 def automatic_feature_matching(im1, im2, c_anms=0.95, c_lowes=0.65, c_ransac=1):
+
     # [1] Harris corner detection
     h1, corners1 = get_harris_corners(im1)
     h2, corners2 = get_harris_corners(im2)
