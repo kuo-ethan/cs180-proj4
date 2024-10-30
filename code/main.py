@@ -50,10 +50,10 @@ def mosaic_blending(auto=False):
         (660, 284),
     ]
     if auto:
-        balcony_keypoints1, balcony_keypoints2 = automatic_feature_matching(im1, im2)
+        balcony_keypoints1, balcony_keypoints2 = automatic_feature_matching(
+            im1, im2, c_lowes=0.75
+        )
 
-    # display_img_with_keypoints(im1, balcony_keypoints1)
-    # display_img_with_keypoints(im2, balcony_keypoints2)
     mosaic = build_mosaic(im1, im2, balcony_keypoints1, balcony_keypoints2)
     filename = f"../images/balcony_mosaic{'_auto' if auto else ''}.jpg"
     skio.imsave(filename, mosaic)
@@ -139,8 +139,8 @@ def mosaic_blending(auto=False):
 
 
 # Project 4A
-# image_rectification()
-# mosaic_blending()
+image_rectification()
+mosaic_blending()
 
 # Project 4B
 mosaic_blending(auto=True)

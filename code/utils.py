@@ -319,7 +319,7 @@ def get_harris_corners(im, edge_discard=20):
 
 
 # Filters a list of candidate corners into K good, spatially distributed corners
-def anms(h, corners, k=100, c_robust=0.95):
+def anms(h, corners, c_robust, k=100):
     _, n = corners.shape
     ys, xs = corners
 
@@ -360,7 +360,7 @@ def extract_feature(x, y, im):
 
 
 # Returns tuples of indices that represent matchings between feature patches
-def match_features(features1, features2, c_robust=0.65):
+def match_features(features1, features2, c_robust):
     flattened_features1 = [feature.flatten() for feature in features1]
     flattened_features2 = [feature.flatten() for feature in features2]
 
@@ -403,7 +403,7 @@ def match_features(features1, features2, c_robust=0.65):
 
 
 # Runs RANSAC algorithm to filter out some matchings
-def ransac(im1_pts, im2_pts, iterations=10000, c_robust=1):
+def ransac(im1_pts, im2_pts, c_robust, iterations=10000):
 
     assert len(im1_pts) == len(im2_pts)
 
@@ -438,17 +438,17 @@ def ransac(im1_pts, im2_pts, iterations=10000, c_robust=1):
 
 
 # Automatically derive and return correspondances between 2 images (feature matching)
-def automatic_feature_matching(im1, im2):
+def automatic_feature_matching(im1, im2, c_anms=0.95, c_lowes=0.65, c_ransac=1):
     # [1] Harris corner detection
     h1, corners1 = get_harris_corners(im1)
     h2, corners2 = get_harris_corners(im2)
 
     # [2] Adaptive Non-Maximal Supression (ANMS)
-    corners1 = anms(h1, corners1)
-    corners2 = anms(h2, corners2)
+    corners1 = anms(h1, corners1, c_anms)
+    corners2 = anms(h2, corners2, c_anms)
 
-    display_img_with_keypoints(im1, list(zip(corners1[1], corners1[0])))  # TEST
-    display_img_with_keypoints(im2, list(zip(corners2[1], corners2[0])))  # TEST
+    # display_img_with_keypoints(im1, list(zip(corners1[1], corners1[0])))  # TEST
+    # display_img_with_keypoints(im2, list(zip(corners2[1], corners2[0])))  # TEST
 
     # [3] Feature descriptor extraction
     corners1 = corners1[[1, 0], :].T
@@ -459,14 +459,18 @@ def automatic_feature_matching(im1, im2):
     features2 = [extract_feature(x, y, im2_blurred) for x, y in corners2]
 
     # [4] Feature matching (with Lowe's technique)
-    corners1 = np.array([corners1[i] for i, _ in match_features(features1, features2)])
-    corners2 = np.array([corners2[j] for _, j in match_features(features1, features2)])
+    corners1 = np.array(
+        [corners1[i] for i, _ in match_features(features1, features2, c_lowes)]
+    )
+    corners2 = np.array(
+        [corners2[j] for _, j in match_features(features1, features2, c_lowes)]
+    )
 
-    plot_matches(im1, im2, corners1, corners2)  # TEST
+    # plot_matches(im1, im2, corners1, corners2)  # TEST
 
     # [5] Random Sample Consensus (RANSAC)
-    corners1, corners2 = ransac(corners1, corners2)
+    corners1, corners2 = ransac(corners1, corners2, c_ransac)
 
-    plot_matches(im1, im2, corners1, corners2)  # TEST
+    # plot_matches(im1, im2, corners1, corners2)  # TEST
 
     return corners1, corners2
